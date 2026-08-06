@@ -101,3 +101,36 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
       - name: Run Credo
         run: mix credo --strict
+
+  typecheck:
+    name: Typecheck
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20.2"
+          otp-version: "29.0"
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+      - name: Restore PLT cache
+        uses: actions/cache@v4
+        id: plt-cache
+        with:
+          path: .plts
+          key: ${{ runner.os }}-plt-${{ hashFiles('mix.lock') }}-1.20.2-29.0
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ hashFiles('mix.lock') }}-
+            ${{ runner.os }}-plt-
+      - name: Create PLTs directory
+        if: steps.plt-cache.outputs.cache-hit != 'true'
+        run: mkdir -p .plts
+      - name: Run dialyzer
+        run: mix dialyzer --format github
