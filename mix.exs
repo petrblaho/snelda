@@ -9,8 +9,8 @@ defmodule Snelda.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       dialyzer: [
-        plt_local_path: "priv/plts/project.plt",
-        plt_core_path: "priv/plts/core.plt"
+        plt_local_path: ".plts",
+        plt_core_path: ".plts"
       ]
     ]
   end
