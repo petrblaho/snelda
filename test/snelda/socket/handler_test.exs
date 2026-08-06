@@ -32,4 +32,37 @@ defmodule Snelda.Socket.HandlerTest do
 
     :gen_tcp.close(socket)
   end
+
+  test "replies with Invalid JSON error", %{socket_path: socket_path} do
+    {:ok, socket} =
+      :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: :line, active: false])
+
+    msg = "not json\n"
+    :ok = :gen_tcp.send(socket, msg)
+
+    {:ok, response} = :gen_tcp.recv(socket, 0, 1000)
+    assert Jason.decode!(response) == %{"type" => "error", "message" => "Invalid JSON"}
+  end
+
+  test "replies with Unknown protocol message error", %{socket_path: socket_path} do
+    {:ok, socket} =
+      :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: :line, active: false])
+
+    msg = Jason.encode!(%{type: "unknown"}) <> "\n"
+    :ok = :gen_tcp.send(socket, msg)
+
+    {:ok, response} = :gen_tcp.recv(socket, 0, 1000)
+
+    assert Jason.decode!(response) == %{
+             "type" => "error",
+             "message" => "Unknown protocol message"
+           }
+  end
+
+  test "handles tcp_error message" do
+    {:ok, handler} = GenServer.start(Snelda.Socket.Handler, :dummy_socket)
+    Process.monitor(handler)
+    send(handler, {:tcp_error, :dummy_socket, :econnreset})
+    assert_receive {:DOWN, _, :process, ^handler, :normal}
+  end
 end
