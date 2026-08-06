@@ -3,7 +3,11 @@ defmodule Snelda.Socket.Handler do
   use GenServer
   require Logger
 
+  @type state :: %{socket: :gen_tcp.socket() | port()}
+
   # called by GenServer.start/2 in the Acceptor
+  @impl true
+  @spec init(:gen_tcp.socket() | port()) :: {:ok, state()}
   def init(socket) do
     # we store the socket in out state, but we do not start reading yet
     # we must wait for the Acceptor to transfer ownership and send :takeover
@@ -11,6 +15,14 @@ defmodule Snelda.Socket.Handler do
   end
 
   # this handle the :takeover message sent by the Acceptor
+  @impl true
+  @spec handle_info(
+          :takeover
+          | {:tcp, port(), binary()}
+          | {:tcp_closed, port()}
+          | {:tcp_error, port(), term()},
+          state()
+        ) :: {:noreply, state()} | {:stop, :normal, state()}
   def handle_info(:takeover, state) do
     # now we own the socket, we will tell the OS to send us exactly one line of text
     :inet.setopts(state.socket, active: :once)
