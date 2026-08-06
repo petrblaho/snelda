@@ -57,8 +57,8 @@ jobs:
             deps
             _build
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-      - name: Run tests
-        run: mix test
+      - name: Run tests with coverage
+        run: mix coveralls
 
   format:
     name: Format
