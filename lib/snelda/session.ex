@@ -5,6 +5,9 @@ defmodule Snelda.Session do
 
   # --- public API ---
 
+  @type state :: %{session_id: String.t(), history: [String.t()]}
+
+  @spec start_link(Keyword.t()) :: GenServer.on_start()
   def start_link(opts) do
     session_id = Keyword.fetch!(opts, :session_id)
     # register this process in the SessionRegistry using the session_id
@@ -14,6 +17,7 @@ defmodule Snelda.Session do
 
   # --- callbacks ---
   @impl true
+  @spec init(Keyword.t()) :: {:ok, state()}
   def init(opts) do
     session_id = Keyword.fetch!(opts, :session_id)
     Logger.info("Starting Session #{session_id}")
@@ -23,6 +27,8 @@ defmodule Snelda.Session do
   end
 
   @impl true
+  @spec handle_call({:prompt, String.t()}, GenServer.from(), state()) ::
+          {:reply, [String.t()], state()}
   def handle_call({:prompt, text}, _from, state) do
     # update the history (prepending is O(1) in Elixir, appending is O(N))
     # we prepend here and will reverse it when sending to the client

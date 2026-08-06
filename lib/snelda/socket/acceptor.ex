@@ -4,11 +4,13 @@ defmodule Snelda.Socket.Acceptor do
   require Logger
 
   # called by the supervisor
+  @spec start_link(Keyword.t()) :: {:ok, pid()} | {:error, term()}
   def start_link(opts) do
     Task.start_link(__MODULE__, :accept, [opts[:socket_path]])
   end
 
   # entry point for the Task process
+  @spec accept(binary()) :: no_return()
   def accept(socket_path) do
     # remove old socket file if it exists (crashed previous run)
     File.rm(socket_path)
