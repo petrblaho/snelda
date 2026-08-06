@@ -1,4 +1,5 @@
 /_build
+/.plts
 /cover
 /deps
 /doc
