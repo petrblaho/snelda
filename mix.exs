@@ -41,6 +41,7 @@ defmodule Snelda.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:req, "~> 0.5.0"},
       {:jason, "~> 1.4"},
       {:phoenix_pubsub, "~> 2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
