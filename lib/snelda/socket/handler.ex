@@ -3,7 +3,7 @@ defmodule Snelda.Socket.Handler do
   use GenServer
   require Logger
 
-  @type state :: %{socket: :gen_tcp.socket() | port()}
+  @type state :: %{socket: :gen_tcp.socket() | port(), subscriptions: MapSet.t()}
 
   # called by GenServer.start/2 in the Acceptor
   @impl true
@@ -11,7 +11,7 @@ defmodule Snelda.Socket.Handler do
   def init(socket) do
     # we store the socket in out state, but we do not start reading yet
     # we must wait for the Acceptor to transfer ownership and send :takeover
-    {:ok, %{socket: socket}}
+    {:ok, %{socket: socket, subscriptions: MapSet.new()}}
   end
 
   # this handle the :takeover message sent by the Acceptor
@@ -33,18 +33,30 @@ defmodule Snelda.Socket.Handler do
   def handle_info({:tcp, socket, data}, state) do
     case Jason.decode(data) do
       {:ok, %{"type" => "prompt", "session_id" => sid, "text" => text}} ->
-        process_prompt(socket, sid, text)
+        new_state = process_prompt(state, sid, text)
+        :inet.setopts(socket, active: :once)
+        {:noreply, new_state}
 
       {:ok, _other} ->
         reply_error(socket, "Unknown protocol message")
+        :inet.setopts(socket, active: :once)
+        {:noreply, state}
 
       {:error, _reason} ->
         reply_error(socket, "Invalid JSON")
+        :inet.setopts(socket, active: :once)
+        {:noreply, state}
     end
+  end
 
-    # we have finished processing the line, tell the OS to send next once
-    # this is the backpressure mechanism
-    :inet.setopts(socket, active: :once)
+  def handle_info(%Snelda.Event{type: :state_updated, payload: history}, state) do
+    response = Jason.encode!(%{type: "history", data: history}) <> "\n"
+    :gen_tcp.send(state.socket, response)
+    {:noreply, state}
+  end
+
+  # Ignore other events like our own :user_prompt broadcast
+  def handle_info(%Snelda.Event{}, state) do
     {:noreply, state}
   end
 
@@ -61,20 +73,24 @@ defmodule Snelda.Socket.Handler do
   end
 
   # --- private helpers ---
-  defp process_prompt(socket, sid, text) do
-    # ask the DynamicSupervisor to ensure a Session exists for this ID
-    {:ok, session_pid} = Snelda.Session.Supervisor.ensure_session(sid)
+  defp process_prompt(state, sid, text) do
+    {:ok, _session_pid} = Snelda.Session.Supervisor.ensure_session(sid)
 
-    # make a synchronous blocking call to the Session
-    # if the session takes 5 seconds to process this the Handler hangs here for 5 seconds
-    # because it hangs here it does not reach the `Linet.setopts` line above
-    # because it does not set `active: :once` the OS stops reading from the TCP buffer
-    # this forces the client to wait - backpressure achieved
-    history = GenServer.call(session_pid, {:prompt, text})
+    new_state =
+      if MapSet.member?(state.subscriptions, sid) do
+        state
+      else
+        Phoenix.PubSub.subscribe(Snelda.PubSub, "session:#{sid}")
+        %{state | subscriptions: MapSet.put(state.subscriptions, sid)}
+      end
 
-    # send the results back to the client
-    response = Jason.encode!(%{type: "history", data: history}) <> "\n"
-    :gen_tcp.send(socket, response)
+    Phoenix.PubSub.broadcast(
+      Snelda.PubSub,
+      "session:#{sid}",
+      %Snelda.Event{session_id: sid, type: :user_prompt, payload: text}
+    )
+
+    new_state
   end
 
   defp reply_error(socket, message) do
