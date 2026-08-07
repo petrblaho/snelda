@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Ensure we're in the project root
+cd "$(git rev-parse --show-toplevel)"
+
+echo "==> Running format check..."
+if ! mix format --check-formatted; then
+  echo "❌ Formatting failed. Please run 'mix format'."
+  exit 1
+fi
+
+echo "==> Running credo..."
+if ! mix credo --strict; then
+  echo "❌ Linting failed. Please fix credo issues."
+  exit 1
+fi
+
+echo "✅ All pre-commit checks passed."
+exit 0
