@@ -22,23 +22,34 @@ defmodule Snelda.Session do
     session_id = Keyword.fetch!(opts, :session_id)
     Logger.info("Starting Session #{session_id}")
 
+    Phoenix.PubSub.subscribe(Snelda.PubSub, "session:#{session_id}")
+
     # the sate is a map holding the id and the history list
     {:ok, %{session_id: session_id, history: []}}
   end
 
   @impl true
-  @spec handle_call({:prompt, String.t()}, GenServer.from(), state()) ::
-          {:reply, [String.t()], state()}
-  def handle_call({:prompt, text}, _from, state) do
-    # update the history (prepending is O(1) in Elixir, appending is O(N))
-    # we prepend here and will reverse it when sending to the client
+  def handle_info(%Snelda.Event{type: :user_prompt, payload: text}, state) do
     new_history = [text | state.history]
-
-    # update the state
     new_state = %{state | history: new_history}
 
-    # reply to the caller (Handler)
-    # return format: {:reply, response_payload, next_state}
-    {:reply, Enum.reverse(new_history), new_state}
+    Phoenix.PubSub.broadcast(
+      Snelda.PubSub,
+      "session:#{state.session_id}",
+      %Snelda.Event{
+        session_id: state.session_id,
+        type: :state_updated,
+        index: length(new_history),
+        payload: Enum.reverse(new_history)
+      }
+    )
+
+    {:noreply, new_state}
+  end
+
+  # Ignore other events like our own :state_updated broadcast
+  @impl true
+  def handle_info(%Snelda.Event{}, state) do
+    {:noreply, state}
   end
 end

@@ -41,6 +41,7 @@ defmodule Snelda.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
+      {:phoenix_pubsub, "~> 2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: :test},
