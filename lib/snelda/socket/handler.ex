@@ -32,6 +32,14 @@ defmodule Snelda.Socket.Handler do
   # when active: :once is set the OS send the line as a message to our mailbox
   def handle_info({:tcp, socket, data}, state) do
     case Jason.decode(data) do
+      {:ok, %{"type" => "execute", "config" => config_path, "vars" => vars}} ->
+        response_payload = execute_task(config_path, vars)
+
+        response = Jason.encode!(response_payload) <> "\n"
+        :gen_tcp.send(socket, response)
+        :inet.setopts(socket, active: :once)
+        {:noreply, state}
+
       {:ok, %{"type" => "prompt", "session_id" => sid, "text" => text}} ->
         new_state = process_prompt(state, sid, text)
         :inet.setopts(socket, active: :once)
@@ -73,6 +81,49 @@ defmodule Snelda.Socket.Handler do
   end
 
   # --- private helpers ---
+  defp execute_task(config_path, vars) do
+    with {:ok, file} <- File.read(config_path),
+         {:ok, config} <- Jason.decode(file) do
+      prompt = Snelda.TaskConfig.render_prompt(config["user_prompt"], vars)
+
+      opts = %{
+        proxy_url: config["proxy_url"] || "http://localhost:4000/v1/chat/completions",
+        model: config["model"],
+        system_prompt: config["system_prompt"],
+        user_prompt: prompt
+      }
+
+      run_llm_and_evaluate(opts, config)
+    else
+      {:error, err} ->
+        %{
+          "type" => "execution_result",
+          "exit_code" => 1,
+          "feedback" => "Config error: #{inspect(err)}"
+        }
+    end
+  end
+
+  defp run_llm_and_evaluate(opts, config) do
+    case Snelda.LLM.execute(opts) do
+      {:ok, result} ->
+        # MVP evaluation: just check if the boolean key from success condition matches.
+        # We parse a naive condition like "valid == true"
+        condition = config["success_condition"] || ""
+        [key, "==", expected] = String.split(condition, " ", parts: 3)
+        expected_bool = expected == "true"
+
+        is_success = Map.get(result, key) == expected_bool
+        exit_code = if is_success, do: 0, else: 1
+        feedback = Map.get(result, "feedback", "No feedback provided")
+
+        %{"type" => "execution_result", "exit_code" => exit_code, "feedback" => feedback}
+
+      {:error, msg} ->
+        %{"type" => "execution_result", "exit_code" => 1, "feedback" => "LLM Error: #{msg}"}
+    end
+  end
+
   defp process_prompt(state, sid, text) do
     {:ok, _session_pid} = Snelda.Session.Supervisor.ensure_session(sid)
 
