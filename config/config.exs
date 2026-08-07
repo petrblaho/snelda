@@ -8,3 +8,5 @@ config :mix_test_watch,
     "credo --strict",
     "dialyzer"
   ]
+
+import_config "#{config_env()}.exs"
