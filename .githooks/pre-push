@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Ensure we're in the project root
+cd "$(git rev-parse --show-toplevel)"
+
+echo "==> Running tests and coverage..."
+if ! mix coveralls; then
+  echo "❌ Tests or coverage failed."
+  exit 1
+fi
+
+echo "==> Running dialyzer..."
+if ! mix dialyzer; then
+  echo "❌ Typechecking failed."
+  exit 1
+fi
+
+echo "==> Validating Scoped Commits..."
+
+REGEX="^[a-zA-Z0-9_\-]+: [A-Z0-9a-z].*"
+VIOLATIONS=0
+ERROR_MESSAGES=""
+
+# Git passes: <local ref> <local sha1> <remote ref> <remote sha1>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # If deleting a branch, skip
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+
+  # Determine commit range
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    # New branch, check all commits not in main
+    RANGE="origin/main..$local_sha"
+  else
+    # Existing branch, check only new commits
+    RANGE="$remote_sha..$local_sha"
+  fi
+
+  COMMITS=$(git log --no-merges --no-show-signature --format=%H $RANGE 2>/dev/null)
+  
+  for SHA in $COMMITS; do
+    SUBJECT=$(git log --format=%s -n 1 $SHA)
+    
+    if ! [[ "$SUBJECT" =~ $REGEX ]]; then
+      VIOLATIONS=$((VIOLATIONS+1))
+      ERROR_MESSAGES="$ERROR_MESSAGES\n❌ Commit $SHA violated rules:\n   Subject: \"$SUBJECT\"\n   Expected format: \"scope: Description\" (e.g., \"ui: Update button color\")\n"
+    fi
+  done
+done
+
+if [ $VIOLATIONS -gt 0 ]; then
+  echo "🚨 Found $VIOLATIONS commit(s) violating the Scoped Commit standard:"
+  printf "%b\n" "$ERROR_MESSAGES"
+  echo "Please rebase and reword your commits to match the standard before pushing."
+  exit 1
+else
+  echo "✅ All pushed commits match the Scoped Commit standard."
+fi
+
+echo "✅ All pre-push checks passed."
+exit 0
