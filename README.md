@@ -40,3 +40,14 @@ Before submitting a pull request, ensure all local checks pass. Run the followin
 - `mix dialyzer` (Runs typechecking)
 
 Additionally, this project strictly adheres to [Conventional Commits](https://www.conventionalcommits.org/) for all commit messages.
+
+### Local Git Hooks (Opt-In)
+
+To automatically enforce formatting, linting, and commit message standards locally before pushing to CI, you can configure git to use the repository's custom hooks:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+- **On `commit`**: Runs formatting and credo checks. (Use `git commit -n` to bypass).
+- **On `push`**: Runs tests, dialyzer, and enforces the `scope: Description` commit message format. (Use `git push --no-verify` to bypass).
