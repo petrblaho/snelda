@@ -42,6 +42,7 @@ defmodule Snelda.MixProject do
   defp deps do
     [
       {:req, "~> 0.5.0"},
+      {:plug, "~> 1.0", only: :test},
       {:jason, "~> 1.4"},
       {:phoenix_pubsub, "~> 2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
