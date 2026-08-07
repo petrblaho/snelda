@@ -10,6 +10,7 @@ defmodule Snelda.Application do
 
     # the list of children to supervise in precise startup order
     children = [
+      {Phoenix.PubSub, name: Snelda.PubSub},
       {Registry, keys: :unique, name: Snelda.SessionRegistry},
       {DynamicSupervisor, stratedy: :one_for_one, name: Snelda.Session.Supervisor},
       {Snelda.Socket.Acceptor, socket_path: socket_path}

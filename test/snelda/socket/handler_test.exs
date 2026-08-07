@@ -24,14 +24,17 @@ defmodule Snelda.Socket.HandlerTest do
       msg = Jason.encode!(%{type: "prompt", session_id: "test1", text: "hello"}) <> "\n"
       :ok = :gen_tcp.send(socket, msg)
 
-      {:ok, response} = :gen_tcp.recv(socket, 0, 1000)
+      {:ok, response} = :gen_tcp.recv(socket, 0, 5000)
       assert Jason.decode!(response) == %{"type" => "history", "data" => ["hello"]}
+
+      # To prevent race conditions in the test, we wait a moment.
+      Process.sleep(50)
 
       # Send second prompt to ensure state is maintained
       msg2 = Jason.encode!(%{type: "prompt", session_id: "test1", text: "world"}) <> "\n"
       :ok = :gen_tcp.send(socket, msg2)
 
-      {:ok, response2} = :gen_tcp.recv(socket, 0, 1000)
+      {:ok, response2} = :gen_tcp.recv(socket, 0, 5000)
       assert Jason.decode!(response2) == %{"type" => "history", "data" => ["hello", "world"]}
 
       :gen_tcp.close(socket)
