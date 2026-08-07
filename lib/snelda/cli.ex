@@ -3,18 +3,25 @@ defmodule Snelda.CLI do
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
+    System.halt(do_main(args))
+  end
+
+  @spec do_main([String.t()]) :: non_neg_integer()
+  def do_main(args) do
     case parse_args(args) do
       {:ok, %{command: :daemon}} ->
         run_daemon()
-        System.halt(0)
+        0
 
       {:ok, %{command: :execute, config: config, vars: vars}} ->
-        run_execute(config, vars)
-        System.halt(0)
+        case run_execute(config, vars) do
+          {:ok, code} -> code
+          {:error, code} -> code
+        end
 
       {:error, msg} ->
         IO.puts(:stderr, msg)
-        System.halt(1)
+        1
     end
   end
 
@@ -26,13 +33,14 @@ defmodule Snelda.CLI do
     :ok
   end
 
-  @spec run_execute(String.t(), map()) :: no_return()
-  defp run_execute(config, vars) do
+  @spec run_execute(String.t(), map()) :: {:ok, non_neg_integer()} | {:error, non_neg_integer()}
+  def run_execute(config, vars) do
     socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
     send_payload(socket_path, config, vars, 0)
   end
 
-  @spec send_payload(String.t(), String.t(), map(), non_neg_integer()) :: no_return()
+  @spec send_payload(String.t(), String.t(), map(), non_neg_integer()) ::
+          {:ok, non_neg_integer()} | {:error, non_neg_integer()}
   defp send_payload(socket_path, config, vars, attempt) when attempt < 6 do
     case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: :line]) do
       {:ok, socket} ->
@@ -45,10 +53,11 @@ defmodule Snelda.CLI do
 
   defp send_payload(socket_path, _config, _vars, _) do
     IO.puts(:stderr, "Failed to connect to daemon at #{socket_path} after multiple retries.")
-    System.halt(1)
+    {:error, 1}
   end
 
-  @spec handle_connection(:gen_tcp.socket(), String.t(), map()) :: no_return()
+  @spec handle_connection(:gen_tcp.socket(), String.t(), map()) ::
+          {:ok, non_neg_integer()} | {:error, non_neg_integer()}
   defp handle_connection(socket, config, vars) do
     payload =
       Jason.encode!(%{"type" => "execute", "config" => config, "vars" => vars}) <> "\n"
@@ -59,38 +68,45 @@ defmodule Snelda.CLI do
       {:ok, data} ->
         %{"exit_code" => code, "feedback" => feedback} = Jason.decode!(data)
         if code != 0, do: IO.puts(:stderr, feedback)
-        System.halt(code)
+        {:ok, code}
 
       {:error, _} ->
         IO.puts(:stderr, "Error receiving from daemon")
-        System.halt(1)
+        {:error, 1}
     end
   end
 
-  @spec retry_connection(String.t(), String.t(), map(), non_neg_integer()) :: no_return()
+  @dialyzer {:nowarn_function, retry_connection: 4}
+  @spec retry_connection(String.t(), String.t(), map(), non_neg_integer()) ::
+          {:ok, non_neg_integer()} | {:error, non_neg_integer()} | no_return()
   defp retry_connection(socket_path, config, vars, attempt) do
     if attempt == 0 do
       spawn_daemon()
     end
 
     # Exponential backoff: 50, 100, 200, 400, 800ms
-    backoff = 50 * Integer.pow(2, attempt)
+    # For tests, we use 1ms backoff so tests don't take ages
+    backoff = Application.get_env(:snelda, :backoff_multiplier, 50) * Integer.pow(2, attempt)
     Process.sleep(backoff)
     send_payload(socket_path, config, vars, attempt + 1)
   end
 
   @dialyzer {:nowarn_function, spawn_daemon: 0}
-  @spec spawn_daemon() :: port() | no_return()
+  @spec spawn_daemon() :: port() | no_return() | :ok
   defp spawn_daemon do
-    bin =
-      System.find_executable("snelda") || :escript.script_name() |> to_string() || "snelda"
+    if Mix.env() == :test do
+      :ok
+    else
+      bin =
+        System.find_executable("snelda") || :escript.script_name() |> to_string() || "snelda"
 
-    try do
-      Port.open({:spawn_executable, bin}, [:detached, args: ["daemon"]])
-    rescue
-      _ ->
-        IO.puts(:stderr, "Failed to spawn daemon process.")
-        System.halt(1)
+      try do
+        Port.open({:spawn_executable, bin}, [:detached, args: ["daemon"]])
+      rescue
+        _ ->
+          IO.puts(:stderr, "Failed to spawn daemon process.")
+          System.halt(1)
+      end
     end
   end
 

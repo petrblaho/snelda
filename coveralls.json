@@ -5,6 +5,8 @@
   },
   "skip_files": [
     "lib/snelda/application.ex",
-    "lib/snelda.ex"
+    "lib/snelda.ex",
+    "lib/snelda/cli.ex",
+    "lib/snelda/socket/handler.ex"
   ]
 }
