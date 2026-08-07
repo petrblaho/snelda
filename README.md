@@ -1,23 +1,60 @@
 # Snelda
 
-**TODO: Add description**
+Snelda is a lightweight, config-driven LLM task engine built in Elixir. It is designed to evaluate text payloads (like Git commit messages, PR descriptions, or source code diffs) against configurable LLM prompts and rules.
+
+Its primary design goal is **zero-latency execution** for repetitive command-line tasks (like Git hooks). To achieve this, Snelda uses an `emacsclient`-style architecture: the CLI acts as a thin client that talks to a background daemon over a local TCP socket. If the daemon isn't running, the CLI seamlessly spawns it, waits for it to boot, and connects.
+
+## Features
+
+- **Config-Driven:** Define your LLM prompts, models, and success conditions in simple JSON files. Snelda handles the rest.
+- **Zero-Latency Execution:** The heavy Elixir VM runs in the background. The CLI executes instantly via TCP.
+- **Provider Agnostic:** Uses the standard OpenAI JSON format. Point it to a local LiteLLM proxy to route to Anthropic, OpenAI, or local models.
+- **Massive Payload Support:** Pass massive context variables (like `git diff`) safely via `--var-stdin` or `--var-file` to bypass OS `ARG_MAX` limits.
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `snelda` to your list of dependencies in `mix.exs`:
+Snelda is compiled as a standalone `escript` executable. You must have Elixir installed on your system.
 
-```elixir
-def deps do
-  [
-    {:snelda, "~> 0.1.0"}
-  ]
-end
+```bash
+# Fetch dependencies
+mix deps.get
+
+# Build and install the escript globally (usually to ~/.mix/escripts)
+mix escript.install
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/snelda>.
+Ensure `~/.mix/escripts` is in your system `$PATH`.
+
+## Usage Example: Git Commit Verifier
+
+Snelda's MVP use-case is a Git `commit-msg` hook that ensures commits follow the "Stop Using Conventional Commits" philosophy.
+
+1. **Create a configuration file (`.snelda/commit-verify.json`):**
+
+```json
+{
+  "proxy_url": "http://localhost:4000/v1/chat/completions",
+  "model": "claude-3-5-sonnet-20240620",
+  "system_prompt": "You enforce the 'Stop Using Conventional Commits' philosophy. Ensure the commit explains what changed and why, uses the imperative mood, and has no conventional prefixes like feat: or fix:.",
+  "user_prompt": "Evaluate this commit:\nMessage:\n{{message}}\n\nDiff:\n{{diff}}",
+  "success_condition": "valid == true"
+}
+```
+
+2. **Run Snelda from your Git hook (`.githooks/commit-msg`):**
+
+```bash
+#!/bin/bash
+MESSAGE_FILE=$1
+
+# Safely pass large diff via stdin, and message via file
+git diff --cached | snelda execute \
+  --config .snelda/commit-verify.json \
+  --var-file message="$MESSAGE_FILE" \
+  --var-stdin diff
+```
+
+When you commit, Snelda will silently spawn the background daemon (if needed), pass the diff and message to the LLM, evaluate the JSON response, and exit with `0` (allowing the commit) or print the LLM's feedback and exit with `1` (blocking the commit).
 
 
 ## Development
