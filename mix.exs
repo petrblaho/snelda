@@ -23,7 +23,8 @@ defmodule Snelda.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test,
-        "coveralls.github": :test
+        "coveralls.github": :test,
+        "test.watch": :test
       ]
     ]
   end
@@ -42,7 +43,8 @@ defmodule Snelda.MixProject do
       {:jason, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:excoveralls, "~> 0.18", only: :test},
+      {:mix_test_watch, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 end
