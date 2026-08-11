@@ -1,0 +1,10 @@
+#!/bin/bash
+# .githooks/commit-msg
+
+MESSAGE_FILE=$1
+
+# Ensure we use the locally built snelda executable
+git diff --cached | ./snelda execute \
+  --config .snelda/snelda-commit.json \
+  --var-file message="$MESSAGE_FILE" \
+  --var-stdin diff
