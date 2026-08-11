@@ -19,11 +19,35 @@ Snelda is compiled as a standalone `escript` executable. You must have Elixir in
 # Fetch dependencies
 mix deps.get
 
-# Build and install the escript globally (usually to ~/.mix/escripts)
-mix escript.install
+# Build the executable for your global bin directory (~/.mix/escripts)
+# Note: MIX_ENV=prod is required so the background daemon does not emit debug logs to stdout
+MIX_ENV=prod mix escript.install
 ```
 
 Ensure `~/.mix/escripts` is in your system `$PATH`.
+
+### Local Development Build
+
+If you are developing Snelda and want to test it locally without installing it globally, use `escript.build`:
+
+```bash
+# Creates a 'snelda' executable in the current directory
+MIX_ENV=prod mix escript.build
+
+# You can then run it directly
+./snelda execute --config ...
+```
+
+## Daemon Lifecycle
+
+Snelda runs a background daemon to quickly evaluate tasks without booting the Erlang VM every time.
+
+- `snelda daemon start`: Starts the daemon in the background (detached).
+- `snelda daemon stop`: Stops the background daemon.
+- `snelda daemon status`: Checks if the daemon is running (and reports its PID and TTY mode).
+- `snelda daemon run`: Runs the daemon in the foreground (blocking).
+
+If you run `snelda execute ...`, it will automatically check if the daemon is running and start it in the background if necessary.
 
 ## Usage Example: Git Commit Verifier
 
