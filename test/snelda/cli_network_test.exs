@@ -22,7 +22,7 @@ defmodule Snelda.CLINetworkTest do
       :gen_tcp.listen(0, [
         :binary,
         {:ifaddr, {:local, socket_path}},
-        packet: :line,
+        packet: 4,
         active: false,
         reuseaddr: true
       ])
@@ -30,8 +30,15 @@ defmodule Snelda.CLINetworkTest do
     task =
       Task.async(fn ->
         {:ok, client} = :gen_tcp.accept(listen_socket)
+        # First connection is ping from ensure_daemon_running
         {:ok, _data} = :gen_tcp.recv(client, 0)
-        :gen_tcp.send(client, Jason.encode!(%{"exit_code" => 0, "feedback" => "Success"}) <> "\n")
+        :gen_tcp.send(client, Jason.encode!(%{"type" => "pong"}))
+        :gen_tcp.close(client)
+
+        # Second connection is the actual execute payload
+        {:ok, client2} = :gen_tcp.accept(listen_socket)
+        {:ok, _data} = :gen_tcp.recv(client2, 0)
+        :gen_tcp.send(client2, Jason.encode!(%{"exit_code" => 0, "feedback" => "Success"}))
       end)
 
     assert CLI.do_main(["execute", "--config", "test.json"]) == 0
@@ -45,7 +52,7 @@ defmodule Snelda.CLINetworkTest do
       :gen_tcp.listen(0, [
         :binary,
         {:ifaddr, {:local, socket_path}},
-        packet: :line,
+        packet: 4,
         active: false,
         reuseaddr: true
       ])
@@ -53,11 +60,18 @@ defmodule Snelda.CLINetworkTest do
     task =
       Task.async(fn ->
         {:ok, client} = :gen_tcp.accept(listen_socket)
+        # First connection is ping from ensure_daemon_running
         {:ok, _data} = :gen_tcp.recv(client, 0)
+        :gen_tcp.send(client, Jason.encode!(%{"type" => "pong"}))
+        :gen_tcp.close(client)
+
+        # Second connection is the actual execute payload
+        {:ok, client2} = :gen_tcp.accept(listen_socket)
+        {:ok, _data} = :gen_tcp.recv(client2, 0)
 
         :gen_tcp.send(
-          client,
-          Jason.encode!(%{"exit_code" => 1, "feedback" => "Failed check"}) <> "\n"
+          client2,
+          Jason.encode!(%{"exit_code" => 1, "feedback" => "Failed check"})
         )
       end)
 
@@ -75,7 +89,7 @@ defmodule Snelda.CLINetworkTest do
       :gen_tcp.listen(0, [
         :binary,
         {:ifaddr, {:local, socket_path}},
-        packet: :line,
+        packet: 4,
         active: false,
         reuseaddr: true
       ])
@@ -83,9 +97,16 @@ defmodule Snelda.CLINetworkTest do
     task =
       Task.async(fn ->
         {:ok, client} = :gen_tcp.accept(listen_socket)
+        # First connection is ping from ensure_daemon_running
         {:ok, _data} = :gen_tcp.recv(client, 0)
-        # Close abruptly without sending JSON
+        :gen_tcp.send(client, Jason.encode!(%{"type" => "pong"}))
         :gen_tcp.close(client)
+
+        # Second connection is the actual execute payload
+        {:ok, client2} = :gen_tcp.accept(listen_socket)
+        {:ok, _data} = :gen_tcp.recv(client2, 0)
+        # Close abruptly without sending JSON
+        :gen_tcp.close(client2)
       end)
 
     output =
@@ -97,18 +118,15 @@ defmodule Snelda.CLINetworkTest do
     Task.await(task)
   end
 
-  test "retry_connection eventually fails if daemon doesn't start", %{socket_path: socket_path} do
-    # Temporarily set backoff to 1ms to make the test super fast
-    Application.put_env(:snelda, :backoff_multiplier, 1)
-
+  test "run_execute fails and outputs error if daemon doesn't start", %{socket_path: _socket_path} do
     # We do NOT start a listen socket here.
-    # The client will try to connect, fail, call spawn_daemon(), and retry 6 times.
+    # The client will try to ping, fail, call spawn_detached (mocked to do nothing), poll, and fail.
     # We expect an error output to stderr and exit code 1.
     output =
       capture_io(:stderr, fn ->
         assert CLI.do_main(["execute", "--config", "test.json"]) == 1
       end)
 
-    assert String.contains?(output, "Failed to connect to daemon at #{socket_path}")
+    assert String.contains?(output, "Failed to start daemon")
   end
 end

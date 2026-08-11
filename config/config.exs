@@ -1,5 +1,7 @@
 import Config
 
+config :snelda, os_adapter: Snelda.OS.System
+
 config :mix_test_watch,
   clear: true,
   tasks: [
