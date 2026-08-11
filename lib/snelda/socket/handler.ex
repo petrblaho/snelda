@@ -31,11 +31,14 @@ defmodule Snelda.Socket.Handler do
 
   # when active: :once is set the OS send the line as a message to our mailbox
   def handle_info({:tcp, socket, data}, state) do
+    Logger.info("Received TCP data: #{inspect(data)}")
+
     case Jason.decode(data) do
       {:ok, %{"type" => "execute", "config" => config_path, "vars" => vars}} ->
+        Logger.info("Executing task...")
         response_payload = execute_task(config_path, vars)
 
-        response = Jason.encode!(response_payload) <> "\n"
+        response = Jason.encode!(response_payload)
         :gen_tcp.send(socket, response)
         :inet.setopts(socket, active: :once)
         {:noreply, state}
@@ -45,20 +48,43 @@ defmodule Snelda.Socket.Handler do
         :inet.setopts(socket, active: :once)
         {:noreply, new_state}
 
-      {:ok, _other} ->
+      {:ok, %{"type" => "ping"}} ->
+        Logger.info("Responding to ping")
+
+        mode =
+          case :io.columns() do
+            {:ok, _} -> "tty"
+            {:error, :enotsup} -> "detached"
+          end
+
+        response = Jason.encode!(%{type: "pong", status: "ok", pid: System.pid(), mode: mode})
+        :gen_tcp.send(socket, response)
+        :inet.setopts(socket, active: :once)
+        {:noreply, state}
+
+      {:ok, %{"type" => "stop"}} ->
+        Logger.info("Stopping daemon")
+        response = Jason.encode!(%{type: "stopping"})
+        :gen_tcp.send(socket, response)
+        System.stop(0)
+        {:stop, :normal, state}
+
+      {:ok, other} ->
+        Logger.error("Unknown protocol message: #{inspect(other)}")
         reply_error(socket, "Unknown protocol message")
         :inet.setopts(socket, active: :once)
         {:noreply, state}
 
-      {:error, _reason} ->
-        reply_error(socket, "Invalid JSON")
+      {:error, reason} ->
+        Logger.error("JSON decode error: #{inspect(reason)} on data: #{inspect(data)}")
+        reply_error(socket, "Invalid JSON: #{inspect(reason)}")
         :inet.setopts(socket, active: :once)
         {:noreply, state}
     end
   end
 
   def handle_info(%Snelda.Event{type: :state_updated, payload: history}, state) do
-    response = Jason.encode!(%{type: "history", data: history}) <> "\n"
+    response = Jason.encode!(%{type: "history", data: history})
     :gen_tcp.send(state.socket, response)
     {:noreply, state}
   end
@@ -115,7 +141,12 @@ defmodule Snelda.Socket.Handler do
 
         is_success = Map.get(result, key) == expected_bool
         exit_code = if is_success, do: 0, else: 1
-        feedback = Map.get(result, "feedback", "No feedback provided")
+        raw_feedback = Map.get(result, "feedback", "No feedback provided")
+
+        feedback =
+          if is_binary(raw_feedback),
+            do: raw_feedback,
+            else: Jason.encode!(raw_feedback, pretty: true)
 
         %{"type" => "execution_result", "exit_code" => exit_code, "feedback" => feedback}
 
@@ -145,7 +176,7 @@ defmodule Snelda.Socket.Handler do
   end
 
   defp reply_error(socket, message) do
-    response = Jason.encode!(%{type: "error", message: message}) <> "\n"
+    response = Jason.encode!(%{type: "error", message: message})
     :gen_tcp.send(socket, response)
   end
 end

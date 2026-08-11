@@ -19,7 +19,7 @@ defmodule Snelda.Socket.HandlerPromptTest do
     Process.sleep(50)
 
     {:ok, socket} =
-      :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: :line])
+      :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4])
 
     on_exit(fn ->
       File.rm(socket_path)

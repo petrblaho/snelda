@@ -20,7 +20,7 @@ defmodule Snelda.Socket.Acceptor do
       :gen_tcp.listen(0, [
         :binary,
         {:ifaddr, {:local, socket_path}},
-        packet: :line,
+        packet: 4,
         active: false,
         reuseaddr: true
       ])

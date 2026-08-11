@@ -19,7 +19,7 @@ defmodule Snelda.Socket.HandlerTest do
   test "accepts a connection, routes to session, and replies", %{socket_path: socket_path} do
     capture_log(fn ->
       {:ok, socket} =
-        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: :line, active: false])
+        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: 4, active: false])
 
       msg = Jason.encode!(%{type: "prompt", session_id: "test1", text: "hello"}) <> "\n"
       :ok = :gen_tcp.send(socket, msg)
@@ -47,13 +47,13 @@ defmodule Snelda.Socket.HandlerTest do
   test "replies with Invalid JSON error", %{socket_path: socket_path} do
     capture_log(fn ->
       {:ok, socket} =
-        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: :line, active: false])
+        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: 4, active: false])
 
       msg = "not json\n"
       :ok = :gen_tcp.send(socket, msg)
 
       {:ok, response} = :gen_tcp.recv(socket, 0, 1000)
-      assert Jason.decode!(response) == %{"type" => "error", "message" => "Invalid JSON"}
+      assert %{"type" => "error", "message" => "Invalid JSON" <> _} = Jason.decode!(response)
 
       :gen_tcp.close(socket)
       Process.sleep(50)
@@ -63,7 +63,7 @@ defmodule Snelda.Socket.HandlerTest do
   test "replies with Unknown protocol message error", %{socket_path: socket_path} do
     capture_log(fn ->
       {:ok, socket} =
-        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: :line, active: false])
+        :gen_tcp.connect({:local, socket_path}, 0, [:binary, packet: 4, active: false])
 
       msg = Jason.encode!(%{type: "unknown"}) <> "\n"
       :ok = :gen_tcp.send(socket, msg)
