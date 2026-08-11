@@ -38,4 +38,11 @@ defmodule Snelda.CLITest do
   test "parse_args returns error on missing config" do
     assert {:error, "--config is required"} = CLI.parse_args(["execute"])
   end
+
+  test "parses daemon commands" do
+    assert {:ok, %{command: :daemon_run}} = CLI.parse_args(["daemon", "run"])
+    assert {:ok, %{command: :daemon_start}} = CLI.parse_args(["daemon", "start"])
+    assert {:ok, %{command: :daemon_status}} = CLI.parse_args(["daemon", "status"])
+    assert {:ok, %{command: :daemon_stop}} = CLI.parse_args(["daemon", "stop"])
+  end
 end

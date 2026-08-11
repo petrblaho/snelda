@@ -9,14 +9,168 @@ defmodule Snelda.CLI do
   @spec do_main([String.t()]) :: non_neg_integer()
   def do_main(args) do
     case parse_args(args) do
-      {:ok, %{command: :daemon}} ->
-        run_daemon()
+      {:ok, %{command: :daemon_run}} ->
+        setup_daemon_logging()
+        run_daemon_blocking()
         0
 
+      {:ok, %{command: :daemon_start}} ->
+        disable_logging()
+        run_daemon_start()
+
+      {:ok, %{command: :daemon_status}} ->
+        disable_logging()
+        run_daemon_status()
+
+      {:ok, %{command: :daemon_stop}} ->
+        disable_logging()
+        run_daemon_stop()
+
       {:ok, %{command: :execute, config: config, vars: vars}} ->
+        disable_logging()
+
         case run_execute(config, vars) do
           {:ok, code} -> code
           {:error, code} -> code
+        end
+
+      {:error, msg} ->
+        disable_logging()
+        IO.puts(:stderr, msg)
+        1
+    end
+  end
+
+  defp disable_logging do
+    require Logger
+    Logger.configure(level: :none)
+  end
+
+  defp setup_daemon_logging do
+    timestamp = DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")
+    log_path = "/tmp/snelda_daemon_#{timestamp}.log"
+
+    # We add a file backend to the logger for the daemon process.
+    # We DO NOT remove the :default handler, so it continues logging to stdout.
+    :logger.add_handler(:snelda_file_log, :logger_std_h, %{
+      config: %{
+        file: String.to_charlist(log_path)
+      },
+      formatter:
+        {:logger_formatter,
+         %{
+           template: [:time, " ", :level, ": ", :msg, "\n"]
+         }}
+    })
+
+    require Logger
+    Logger.info("Snelda daemon logging started at #{log_path}")
+  end
+
+  @spec ping_daemon(String.t()) :: {:ok, map()} | {:error, term()}
+  defp ping_daemon(socket_path) do
+    case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4]) do
+      {:ok, socket} ->
+        payload = Jason.encode!(%{"type" => "ping"})
+        :gen_tcp.send(socket, payload)
+        result = do_ping_recv(socket)
+        :gen_tcp.close(socket)
+        result
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp do_ping_recv(socket) do
+    case :gen_tcp.recv(socket, 0, 1000) do
+      {:ok, data} ->
+        case Jason.decode(data) do
+          {:ok, %{"type" => "pong"} = pong} -> {:ok, pong}
+          _ -> {:error, :invalid_response}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec ensure_daemon_running() :: :ok | {:error, String.t()}
+  defp ensure_daemon_running do
+    socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+
+    case ping_daemon(socket_path) do
+      {:ok, _pong} ->
+        :ok
+
+      {:error, _} ->
+        executable =
+          try do
+            :escript.script_name() |> List.to_string()
+          catch
+            :error, :undef -> System.argv() |> hd()
+          end
+
+        os_adapter = Application.get_env(:snelda, :os_adapter, Snelda.OS.System)
+
+        case os_adapter.spawn_detached(executable, ["daemon", "run"]) do
+          :ok ->
+            poll_daemon_start(socket_path, 10)
+
+          {:error, msg} ->
+            {:error, msg}
+        end
+    end
+  end
+
+  defp poll_daemon_start(_socket_path, 0) do
+    {:error, "Failed to start daemon. Check logs."}
+  end
+
+  defp poll_daemon_start(socket_path, attempts_left) do
+    Process.sleep(100)
+
+    case ping_daemon(socket_path) do
+      {:ok, _pong} ->
+        :ok
+
+      {:error, _} ->
+        poll_daemon_start(socket_path, attempts_left - 1)
+    end
+  end
+
+  defp run_daemon_blocking do
+    socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+
+    # Pre-flight check
+    case ping_daemon(socket_path) do
+      {:ok, _pong} ->
+        IO.puts("Daemon is already running.")
+        System.halt(0)
+
+      {:error, _} ->
+        # Starting Snelda without auto-start
+        {:ok, _} = Application.ensure_all_started(:snelda)
+        require Logger
+        Logger.info("Daemon running in foreground. Press Ctrl+C to stop.")
+        Process.sleep(:infinity)
+        :ok
+    end
+  end
+
+  defp run_daemon_start do
+    case ensure_daemon_running() do
+      :ok ->
+        socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+
+        case ping_daemon(socket_path) do
+          {:ok, %{"pid" => pid}} ->
+            IO.puts("Daemon started successfully (PID: #{pid}, socket: #{socket_path}).")
+            0
+
+          _ ->
+            IO.puts("Daemon is already running.")
+            0
         end
 
       {:error, msg} ->
@@ -25,24 +179,77 @@ defmodule Snelda.CLI do
     end
   end
 
-  @spec run_daemon() :: :ok
-  defp run_daemon do
-    # Starting Snelda without auto-start
-    {:ok, _} = Application.ensure_all_started(:snelda)
-    Process.sleep(:infinity)
-    :ok
+  @spec run_daemon_status() :: non_neg_integer()
+  defp run_daemon_status do
+    socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+
+    case ping_daemon(socket_path) do
+      {:ok, %{"pid" => pid} = pong} ->
+        mode = Map.get(pong, "mode", "unknown")
+        IO.puts("Daemon is running (PID: #{pid}, socket: #{socket_path}, mode: #{mode}).")
+        0
+
+      {:error, :invalid_response} ->
+        IO.puts(:stderr, "Daemon returned unexpected response.")
+        1
+
+      {:error, _} ->
+        IO.puts("Daemon is not running.")
+        1
+    end
+  end
+
+  defp run_daemon_stop do
+    socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+
+    case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4]) do
+      {:ok, socket} ->
+        payload = Jason.encode!(%{"type" => "stop"})
+        :gen_tcp.send(socket, payload)
+        do_stop_recv(socket)
+
+      {:error, _} ->
+        IO.puts("Daemon is not running.")
+        0
+    end
+  end
+
+  defp do_stop_recv(socket) do
+    case :gen_tcp.recv(socket, 0, 1000) do
+      {:ok, data} ->
+        case Jason.decode(data) do
+          {:ok, %{"type" => "stopping"}} ->
+            IO.puts("Daemon stopped.")
+            0
+
+          _ ->
+            IO.puts(:stderr, "Daemon returned unexpected response.")
+            1
+        end
+
+      {:error, _} ->
+        IO.puts(:stderr, "Error receiving from daemon.")
+        1
+    end
   end
 
   @spec run_execute(String.t(), map()) :: {:ok, non_neg_integer()} | {:error, non_neg_integer()}
   def run_execute(config, vars) do
-    socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
-    send_payload(socket_path, config, vars, 0)
+    case ensure_daemon_running() do
+      :ok ->
+        socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
+        send_payload(socket_path, config, vars, 0)
+
+      {:error, msg} ->
+        IO.puts(:stderr, msg)
+        {:error, 1}
+    end
   end
 
   @spec send_payload(String.t(), String.t(), map(), non_neg_integer()) ::
           {:ok, non_neg_integer()} | {:error, non_neg_integer()}
   defp send_payload(socket_path, config, vars, attempt) when attempt < 6 do
-    case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: :line]) do
+    case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4]) do
       {:ok, socket} ->
         handle_connection(socket, config, vars)
 
@@ -59,8 +266,7 @@ defmodule Snelda.CLI do
   @spec handle_connection(:gen_tcp.socket(), String.t(), map()) ::
           {:ok, non_neg_integer()} | {:error, non_neg_integer()}
   defp handle_connection(socket, config, vars) do
-    payload =
-      Jason.encode!(%{"type" => "execute", "config" => config, "vars" => vars}) <> "\n"
+    payload = Jason.encode!(%{"type" => "execute", "config" => config, "vars" => vars})
 
     :gen_tcp.send(socket, payload)
 
@@ -76,14 +282,18 @@ defmodule Snelda.CLI do
     end
   end
 
-  @dialyzer {:nowarn_function, retry_connection: 4}
   @spec retry_connection(String.t(), String.t(), map(), non_neg_integer()) ::
-          {:ok, non_neg_integer()} | {:error, non_neg_integer()} | no_return()
-  defp retry_connection(socket_path, config, vars, attempt) do
-    if attempt == 0 do
-      spawn_daemon()
-    end
+          {:ok, non_neg_integer()} | {:error, non_neg_integer()}
+  defp retry_connection(socket_path, _config, _vars, 0) do
+    IO.puts(
+      :stderr,
+      "Daemon is not running at #{socket_path}. Please start it using 'snelda daemon start'."
+    )
 
+    {:error, 1}
+  end
+
+  defp retry_connection(socket_path, config, vars, attempt) do
     # Exponential backoff: 50, 100, 200, 400, 800ms
     # For tests, we use 1ms backoff so tests don't take ages
     backoff = Application.get_env(:snelda, :backoff_multiplier, 50) * Integer.pow(2, attempt)
@@ -91,25 +301,11 @@ defmodule Snelda.CLI do
     send_payload(socket_path, config, vars, attempt + 1)
   end
 
-  @dialyzer {:nowarn_function, spawn_daemon: 0}
-  @spec spawn_daemon() :: :ok | no_return()
-  defp spawn_daemon do
-    bin =
-      System.find_executable("snelda") || :escript.script_name() |> to_string() || "snelda"
-
-    adapter = Application.get_env(:snelda, :os_adapter, Snelda.OS.System)
-
-    case adapter.spawn_detached(bin, ["daemon"]) do
-      :ok ->
-        :ok
-
-      {:error, msg} ->
-        IO.puts(:stderr, msg)
-        System.halt(1)
-    end
-  end
-
-  def parse_args(["daemon"]), do: {:ok, %{command: :daemon}}
+  def parse_args(["daemon", "run"]), do: {:ok, %{command: :daemon_run}}
+  def parse_args(["daemon", "start"]), do: {:ok, %{command: :daemon_start}}
+  def parse_args(["daemon", "status"]), do: {:ok, %{command: :daemon_status}}
+  def parse_args(["daemon", "stop"]), do: {:ok, %{command: :daemon_stop}}
+  def parse_args(["daemon"]), do: {:ok, %{command: :daemon_run}}
 
   def parse_args(["execute" | rest]) do
     {parsed, _args, _invalid} =
@@ -131,7 +327,10 @@ defmodule Snelda.CLI do
     end
   end
 
-  def parse_args(_), do: {:error, "Unknown command. Use 'daemon' or 'execute --config <path>'"}
+  def parse_args(_),
+    do:
+      {:error,
+       "Unknown command. Use 'daemon run', 'daemon start', 'daemon status', 'daemon stop', or 'execute --config <path>'"}
 
   defp parse_kv(items) do
     Enum.reduce_while(items, {:ok, %{}}, fn item, {:ok, acc} ->
