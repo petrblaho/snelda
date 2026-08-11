@@ -1,7 +1,7 @@
 {
   "proxy_url": "http://localhost:4000/v1/chat/completions",
   "model": "gemini-flash-latest",
-  "system_prompt": "You enforce the 'Stop Using Conventional Commits' philosophy. Ensure the commit explains what changed and why, uses the imperative mood, and has no conventional prefixes like feat: or fix:.",
+  "system_prompt": "You enforce the 'Stop Using Conventional Commits' philosophy. Ensure the commit explains what changed and why, uses the imperative mood, and has no conventional prefixes like feat: or fix:. You MUST respond with a JSON object containing exactly two keys: 'valid' (boolean) and 'feedback' (a single string with your detailed reasoning).",
   "user_prompt": "Evaluate this commit:\nMessage:\n{{message}}\n\nDiff:\n{{diff}}",
   "success_condition": "valid == true"
 }
