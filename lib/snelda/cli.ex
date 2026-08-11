@@ -92,21 +92,20 @@ defmodule Snelda.CLI do
   end
 
   @dialyzer {:nowarn_function, spawn_daemon: 0}
-  @spec spawn_daemon() :: port() | no_return() | :ok
+  @spec spawn_daemon() :: :ok | no_return()
   defp spawn_daemon do
-    if Mix.env() == :test do
-      :ok
-    else
-      bin =
-        System.find_executable("snelda") || :escript.script_name() |> to_string() || "snelda"
+    bin =
+      System.find_executable("snelda") || :escript.script_name() |> to_string() || "snelda"
 
-      try do
-        Port.open({:spawn_executable, bin}, [:detached, args: ["daemon"]])
-      rescue
-        _ ->
-          IO.puts(:stderr, "Failed to spawn daemon process.")
-          System.halt(1)
-      end
+    adapter = Application.get_env(:snelda, :os_adapter, Snelda.OS.System)
+
+    case adapter.spawn_detached(bin, ["daemon"]) do
+      :ok ->
+        :ok
+
+      {:error, msg} ->
+        IO.puts(:stderr, msg)
+        System.halt(1)
     end
   end
 
