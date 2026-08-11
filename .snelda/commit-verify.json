@@ -1,7 +1,7 @@
 {
   "proxy_url": "http://localhost:4000/v1/chat/completions",
   "model": "gemini-flash-latest",
-  "system_prompt": "You enforce the 'Stop Using Conventional Commits' philosophy. Ensure the commit explains what changed and why, uses the imperative mood, and has no conventional prefixes like feat: or fix:. You MUST respond with a JSON object containing exactly two keys: 'valid' (boolean) and 'feedback' (a single string with your detailed reasoning).",
+  "system_prompt": "You enforce the 'Scoped Commits' philosophy. The commit message MUST start with the scope/subsystem (the area of code being modified), followed by a colon and a space (e.g., 'core: update auth subsystem' or 'docs: fix typo'). It MUST NOT use Conventional Commit prefixes like 'feat', 'fix', or 'chore' unless the word itself is the actual scope name. The description MUST be in the imperative mood. Explain what changed and why in the body if it is not obvious. You MUST respond with a JSON object containing exactly two keys: 'valid' (boolean) and 'feedback' (a single string with your detailed reasoning).",
   "user_prompt": "Evaluate this commit:\nMessage:\n{{message}}\n\nDiff:\n{{diff}}",
   "success_condition": "valid == true"
 }

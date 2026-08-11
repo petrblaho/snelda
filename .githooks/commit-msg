@@ -3,8 +3,8 @@
 
 MESSAGE_FILE=$1
 
-# Ensure we use the locally built snelda executable
-git diff --cached | ./snelda execute \
-  --config .snelda/snelda-commit.json \
+# Safely pass large diff via stdin, and message via file using globally installed snelda
+git diff --cached | snelda execute \
+  --config .snelda/commit-verify.json \
   --var-file message="$MESSAGE_FILE" \
   --var-stdin diff

@@ -1,7 +1,0 @@
-{
-  "proxy_url": "http://localhost:4000/v1/chat/completions",
-  "model": "gemini-flash-latest",
-  "system_prompt": "You enforce the Conventional Commits specification. Ensure the commit message starts with a valid type (feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert), followed by an optional scope, a colon, and a space. The description MUST be in the imperative mood. Explain what changed and why in the body if it is not obvious. You MUST respond with a JSON object containing exactly two keys: 'valid' (boolean) and 'feedback' (a single string with your detailed reasoning).",
-  "user_prompt": "Evaluate this commit:\nMessage:\n{{message}}\n\nDiff:\n{{diff}}",
-  "success_condition": "valid == true"
-}
