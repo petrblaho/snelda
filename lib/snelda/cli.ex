@@ -42,8 +42,7 @@ defmodule Snelda.CLI do
   end
 
   defp disable_logging do
-    require Logger
-    Logger.configure(level: :none)
+    :logger.set_primary_config(:level, :none)
   end
 
   defp setup_daemon_logging do
@@ -238,7 +237,7 @@ defmodule Snelda.CLI do
     case ensure_daemon_running() do
       :ok ->
         socket_path = Application.get_env(:snelda, :socket_path, "/tmp/snelda.sock")
-        send_payload(socket_path, config, vars, 0)
+        send_payload(socket_path, config, vars)
 
       {:error, msg} ->
         IO.puts(:stderr, msg)
@@ -246,21 +245,21 @@ defmodule Snelda.CLI do
     end
   end
 
-  @spec send_payload(String.t(), String.t(), map(), non_neg_integer()) ::
+  @spec send_payload(String.t(), String.t(), map()) ::
           {:ok, non_neg_integer()} | {:error, non_neg_integer()}
-  defp send_payload(socket_path, config, vars, attempt) when attempt < 6 do
+  defp send_payload(socket_path, config, vars) do
     case :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4]) do
       {:ok, socket} ->
         handle_connection(socket, config, vars)
 
       {:error, _} ->
-        retry_connection(socket_path, config, vars, attempt)
-    end
-  end
+        IO.puts(
+          :stderr,
+          "Failed to connect to daemon at #{socket_path}. Please start it using 'snelda daemon start'."
+        )
 
-  defp send_payload(socket_path, _config, _vars, _) do
-    IO.puts(:stderr, "Failed to connect to daemon at #{socket_path} after multiple retries.")
-    {:error, 1}
+        {:error, 1}
+    end
   end
 
   @spec handle_connection(:gen_tcp.socket(), String.t(), map()) ::
@@ -280,25 +279,6 @@ defmodule Snelda.CLI do
         IO.puts(:stderr, "Error receiving from daemon")
         {:error, 1}
     end
-  end
-
-  @spec retry_connection(String.t(), String.t(), map(), non_neg_integer()) ::
-          {:ok, non_neg_integer()} | {:error, non_neg_integer()}
-  defp retry_connection(socket_path, _config, _vars, 0) do
-    IO.puts(
-      :stderr,
-      "Daemon is not running at #{socket_path}. Please start it using 'snelda daemon start'."
-    )
-
-    {:error, 1}
-  end
-
-  defp retry_connection(socket_path, config, vars, attempt) do
-    # Exponential backoff: 50, 100, 200, 400, 800ms
-    # For tests, we use 1ms backoff so tests don't take ages
-    backoff = Application.get_env(:snelda, :backoff_multiplier, 50) * Integer.pow(2, attempt)
-    Process.sleep(backoff)
-    send_payload(socket_path, config, vars, attempt + 1)
   end
 
   def parse_args(["daemon", "run"]), do: {:ok, %{command: :daemon_run}}
