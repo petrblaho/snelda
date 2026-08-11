@@ -7,7 +7,10 @@ defmodule Snelda.OS.System do
       {:error, "Failed to spawn daemon process."}
     else
       args_str = Enum.join(args, " ")
-      System.cmd("sh", ["-c", "nohup #{executable} #{args_str} >/dev/null 2>&1 &"])
+
+      # Using systemd-run or daemonize is platform specific, but since we are in linux:
+      # A simple double fork using bash setsid.
+      System.cmd("bash", ["-c", "setsid #{executable} #{args_str} </dev/null >/dev/null 2>&1 &"])
       :ok
     end
   end
