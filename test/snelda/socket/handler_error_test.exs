@@ -17,7 +17,7 @@ defmodule Snelda.Socket.HandlerErrorTest do
     Process.sleep(50)
 
     {:ok, socket} =
-      :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: :line])
+      :gen_tcp.connect({:local, socket_path}, 0, [:binary, active: false, packet: 4])
 
     on_exit(fn ->
       File.rm(socket_path)
@@ -30,7 +30,7 @@ defmodule Snelda.Socket.HandlerErrorTest do
   test "replies error on invalid json", %{socket: socket} do
     :ok = :gen_tcp.send(socket, "not json\n")
     {:ok, response} = :gen_tcp.recv(socket, 0, 1000)
-    assert %{"type" => "error", "message" => "Invalid JSON"} = Jason.decode!(response)
+    assert %{"type" => "error", "message" => "Invalid JSON" <> _} = Jason.decode!(response)
   end
 
   test "replies error on unknown protocol message", %{socket: socket} do

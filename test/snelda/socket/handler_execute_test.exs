@@ -31,7 +31,7 @@ defmodule Snelda.Socket.HandlerExecuteTest do
       :gen_tcp.connect({:local, "/tmp/snelda_test_exec.sock"}, 0, [
         :binary,
         active: false,
-        packet: :line
+        packet: 4
       ])
 
     # Send payload
