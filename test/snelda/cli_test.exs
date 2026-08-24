@@ -5,8 +5,27 @@ defmodule Snelda.CLITest do
   test "parses literal variables gracefully" do
     args = ["execute", "--config", "task.json", "--var", "foo=bar"]
 
-    assert {:ok, %{command: :execute, config: "task.json", vars: %{"foo" => "bar"}}} =
+    assert {:ok, %{command: :execute, config: config, vars: %{"foo" => "bar"}}} =
              CLI.parse_args(args)
+
+    assert config == Path.expand("task.json")
+  end
+
+  test "expands relative --config to an absolute path" do
+    {:ok, %{config: config}} =
+      CLI.parse_args(["execute", "--config", ".snelda/commit-verify.json"])
+
+    assert config == Path.expand(".snelda/commit-verify.json")
+    assert String.starts_with?(config, "/")
+  end
+
+  test "leaves an already-absolute --config unchanged" do
+    abs = "/tmp/some/config.json"
+
+    {:ok, %{config: config}} =
+      CLI.parse_args(["execute", "--config", abs])
+
+    assert config == abs
   end
 
   test "returns error for malformed --var" do
