@@ -302,7 +302,7 @@ defmodule Snelda.CLI do
            {:ok, vars_file} <- parse_file_kv(Keyword.get_values(parsed, :var_file)),
            {:ok, vars_stdin} <- parse_stdin(Keyword.get_values(parsed, :var_stdin)) do
         all_vars = Enum.reduce([vars_literal, vars_file, vars_stdin], %{}, &Map.merge(&2, &1))
-        {:ok, %{command: :execute, config: config, vars: all_vars}}
+        {:ok, %{command: :execute, config: Path.expand(config), vars: all_vars}}
       end
     end
   end
