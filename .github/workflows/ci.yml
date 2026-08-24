@@ -54,11 +54,19 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
       - name: Restore dependencies cache
         uses: actions/cache@v4
+        id: mix-cache
         with:
           path: |
             deps
             _build
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Install dependencies
+        if: steps.mix-cache.outputs.cache-hit != 'true'
+        run: mix deps.get
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
       - name: Run tests with coverage
         run: mix coveralls
 
