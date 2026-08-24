@@ -55,6 +55,11 @@ Snelda's MVP use-case is a Git `commit-msg` hook that ensures commits follow the
 
 1. **Create a configuration file (`.snelda/commit-verify.json`):**
 
+> **Note:** The `.snelda/` directory is intentionally **git-ignored** — it holds
+> machine-local task configs (model choice, proxy URL, prompts) that vary per
+> developer and per account. Each clone supplies its own; nothing under `.snelda/`
+> is committed. Pick a `model` name your local LLM proxy exposes.
+
 ```json
 {
   "proxy_url": "http://localhost:4000/v1/chat/completions",
