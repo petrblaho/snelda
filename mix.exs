@@ -8,6 +8,7 @@ defmodule Snelda.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       escript: [main_module: Snelda.CLI, app: nil],
+      aliases: aliases(),
       deps: deps(),
       dialyzer: [
         plt_local_path: ".plts",
@@ -49,6 +50,13 @@ defmodule Snelda.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: :test},
       {:mix_test_watch, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  defp aliases do
+    [
+      "dialyzer.build": ["dialyzer --plt"]
     ]
   end
 end
