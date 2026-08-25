@@ -29,8 +29,7 @@ defmodule Snelda.LLM do
   `{:error, {:request_failed, reason}}`.
   """
   @spec chat(opts()) ::
-          {:ok, map()}
-          | {:ok, String.t()}
+          {:ok, map() | list() | String.t() | number() | boolean() | nil}
           | {:error, {:invalid_json, String.t()}}
           | {:error, {:http, non_neg_integer(), term()}}
           | {:error, {:request_failed, term()}}
@@ -104,6 +103,12 @@ defmodule Snelda.LLM do
     case chat(Map.put(opts, :response_format, :json)) do
       {:ok, parsed} when is_map(parsed) ->
         {:ok, parsed}
+
+      {:ok, other} ->
+        # The daemon's execute path expects a JSON object; a valid but non-object
+        # JSON value (list/scalar) is unusable here — treat it as invalid JSON
+        # rather than crashing the handler.
+        {:error, "LLM returned invalid JSON: #{Jason.encode!(other)}"}
 
       {:error, {:invalid_json, raw}} ->
         {:error, "LLM returned invalid JSON: #{raw}"}

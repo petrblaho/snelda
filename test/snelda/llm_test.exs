@@ -73,6 +73,24 @@ defmodule Snelda.LLMTest do
     assert {:error, "Request failed" <> _} = LLM.execute(opts)
   end
 
+  test "execute/1 does not crash when the LLM returns non-object JSON" do
+    Req.Test.stub(Snelda.LLMExecList, fn conn ->
+      Req.Test.json(conn, %{
+        "choices" => [%{"message" => %{"content" => "[1, 2, 3]"}}]
+      })
+    end)
+
+    opts = %{
+      proxy_url: "http://localhost",
+      model: "m",
+      system_prompt: "s",
+      user_prompt: "u",
+      req_opts: [plug: {Req.Test, Snelda.LLMExecList}]
+    }
+
+    assert {:error, "LLM returned invalid JSON" <> _} = LLM.execute(opts)
+  end
+
   describe "chat/1" do
     test "json mode parses object" do
       Req.Test.stub(Snelda.LLMChatJson, fn conn ->
