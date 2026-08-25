@@ -92,4 +92,27 @@ defmodule Snelda.LLM do
   defp auth_opts(nil), do: []
   defp auth_opts({:bearer, key}), do: [auth: {:bearer, key}]
   defp auth_opts({:headers, headers}), do: [headers: headers]
+
+  @doc """
+  Backwards-compatible JSON execute used by the daemon's `execute` task.
+
+  Wraps `chat/1` in `:json` mode and maps structured errors back to the flat
+  string messages the socket protocol has always returned.
+  """
+  @spec execute(map()) :: {:ok, map()} | {:error, String.t()}
+  def execute(opts) do
+    case chat(Map.put(opts, :response_format, :json)) do
+      {:ok, parsed} when is_map(parsed) ->
+        {:ok, parsed}
+
+      {:error, {:invalid_json, raw}} ->
+        {:error, "LLM returned invalid JSON: #{raw}"}
+
+      {:error, {:http, status, body}} ->
+        {:error, "Proxy returned HTTP #{status}: #{inspect(body)}"}
+
+      {:error, {:request_failed, exception}} ->
+        {:error, "Request failed: #{inspect(exception)}"}
+    end
+  end
 end
