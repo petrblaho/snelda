@@ -148,8 +148,9 @@ defmodule Snelda.CLI do
         System.halt(0)
 
       {:error, _} ->
-        # Starting Snelda without auto-start
+        # The library no longer auto-starts; start the daemon tree explicitly.
         {:ok, _} = Application.ensure_all_started(:snelda)
+        {:ok, _} = Snelda.Application.start_daemon()
         require Logger
         Logger.info("Daemon running in foreground. Press Ctrl+C to stop.")
         Process.sleep(:infinity)
